@@ -27,7 +27,7 @@ from skimage import io
 
 # Visualization
 import seaborn as sns
-import visdom
+#import visdom
 
 import os
 from utils import (
@@ -231,9 +231,9 @@ if args.download is not None and len(args.download) > 0:
         get_dataset(dataset, target_folder=FOLDER)
     quit()
 
-viz = visdom.Visdom(env=DATASET + " " + MODEL)
-if not viz.check_connection:
-    print("Visdom is not connected. Did you run 'python -m visdom.server' ?")
+# viz = visdom.Visdom(env=DATASET + " " + MODEL)
+# if not viz.check_connection:
+#     print("Visdom is not connected. Did you run 'python -m visdom.server' ?")
 
 
 hyperparams = vars(args)
@@ -279,15 +279,15 @@ hyperparams.update(
 hyperparams = dict((k, v) for k, v in hyperparams.items() if v is not None)
 
 # Show the image and the ground truth
-display_dataset(img, gt, RGB_BANDS, LABEL_VALUES, palette, viz)
+#display_dataset(img, gt, RGB_BANDS, LABEL_VALUES, palette, viz)
 color_gt = convert_to_color(gt)
 
-if DATAVIZ:
-    # Data exploration : compute and show the mean spectrums
-    mean_spectrums = explore_spectrums(
-        img, gt, LABEL_VALUES, viz, ignored_labels=IGNORED_LABELS
-    )
-    plot_spectrums(mean_spectrums, viz, title="Mean spectrum/class")
+# if DATAVIZ:
+#     # Data exploration : compute and show the mean spectrums
+#     mean_spectrums = explore_spectrums(
+#         img, gt, LABEL_VALUES, viz, ignored_labels=IGNORED_LABELS
+#     )
+#     plot_spectrums(mean_spectrums, viz, title="Mean spectrum/class")
 
 results = []
 # run the experiment several times
@@ -315,8 +315,8 @@ for run in range(N_RUNS):
         "run {}/{}".format(run + 1, N_RUNS),
     )
 
-    display_predictions(convert_to_color(train_gt), viz, caption="Train ground truth")
-    display_predictions(convert_to_color(test_gt), viz, caption="Test ground truth")
+    # display_predictions(convert_to_color(train_gt), viz, caption="Train ground truth")
+    # display_predictions(convert_to_color(test_gt), viz, caption="Test ground truth")
 
     if MODEL == "SVM_grid":
         print("Running a grid search SVM")
@@ -394,7 +394,7 @@ for run in range(N_RUNS):
         with torch.no_grad():
             for input, _ in train_loader:
                 break
-            summary(model.to(hyperparams["device"]), input.size()[1:])
+            #summary(model.to(hyperparams["device"]), input.size()[1:])
             # We would like to use device=hyperparams['device'] altough we have
             # to wait for torchsummary to be fixed first.
 
@@ -412,7 +412,7 @@ for run in range(N_RUNS):
                 device=hyperparams["device"],
                 supervision=hyperparams["supervision"],
                 val_loader=val_loader,
-                display=viz,
+                display=None,
             )
         except KeyboardInterrupt:
             # Allow the user to stop the training
@@ -434,15 +434,15 @@ for run in range(N_RUNS):
     prediction[mask] = 0
 
     color_prediction = convert_to_color(prediction)
-    display_predictions(
-        color_prediction,
-        viz,
-        gt=convert_to_color(test_gt),
-        caption="Prediction vs. test ground truth",
-    )
+    # display_predictions(
+    #     color_prediction,
+    #     viz,
+    #     gt=convert_to_color(test_gt),
+    #     caption="Prediction vs. test ground truth",
+    # )
 
     results.append(run_results)
-    show_results(run_results, viz, label_values=LABEL_VALUES)
+    #show_results(run_results, viz, label_values=LABEL_VALUES)
 
-if N_RUNS > 1:
-    show_results(results, viz, label_values=LABEL_VALUES, agregated=True)
+# if N_RUNS > 1:
+#     show_results(results, viz, label_values=LABEL_VALUES, agregated=True)

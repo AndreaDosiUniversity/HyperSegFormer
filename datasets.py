@@ -10,6 +10,7 @@ import torch.utils
 import torch.utils.data
 import os
 from tqdm import tqdm
+import torch.nn.functional as F
 
 try:
     # Python 3
@@ -323,7 +324,7 @@ def get_dataset(dataset_name, target_folder="./", datasets=DATASETS_CONFIG):
 class HyperX(torch.utils.data.Dataset):
     """ Generic class for a hyperspectral scene """
 
-    def __init__(self, data, gt, **hyperparams):
+    def __init__(self, data, gt, model = None, **hyperparams):
         """
         Args:
             data: 3D hyperspectral image
@@ -337,6 +338,7 @@ class HyperX(torch.utils.data.Dataset):
         super(HyperX, self).__init__()
         self.data = data
         self.label = gt
+        self.model = model
         self.name = hyperparams["dataset"]
         self.patch_size = hyperparams["patch_size"]
         self.ignored_labels = set(hyperparams["ignored_labels"])
@@ -432,4 +434,9 @@ class HyperX(torch.utils.data.Dataset):
         if self.patch_size > 1:
             # Make 4D data ((Batch x) Planes x Channels x Width x Height)
             data = data.unsqueeze(0)
+        if self.model == "ThreeDimSegFormer":
+            spectral_dim = data.shape[1]
+            list_of_2d_tensors = [label for i in range(spectral_dim)]
+            label = torch.stack(list_of_2d_tensors) 
+
         return data, label

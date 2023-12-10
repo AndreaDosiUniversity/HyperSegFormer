@@ -15,6 +15,7 @@ import joblib
 
 from tqdm import tqdm
 from utils import grouper, sliding_window, count_sliding_window, camel_to_snake
+from three_dim_segform_arch import *
 
 
 def get_model(name, **kwargs):
@@ -181,6 +182,18 @@ def get_model(name, **kwargs):
         model = model.to(device)
         optimizer = optim.Adadelta(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss(weight=kwargs["weights"])
+
+    elif name == "ThreeDimSegForm":
+        patch_size = kwargs.setdefault("patch_size", 1)
+        center_pixel = False
+        img_size = (n_bands, patch_size, patch_size)
+        depths=[2, 2, 2, 2]
+        model = ThreeDimSegFormer(img_size, num_classes = n_classes, depths=depths)
+        lr = kwargs.setdefault("learning_rate", 0.01)
+        optimizer = optim.SGD(model.parameters(), lr=lr)
+        criterion = nn.CrossEntropyLoss(weight=kwargs["weights"])
+        kwargs.setdefault("epoch", 100)
+        kwargs.setdefault("batch_size", 100)
     else:
         raise KeyError("{} model is unknown.".format(name))
 
@@ -200,6 +213,7 @@ def get_model(name, **kwargs):
     kwargs.setdefault("mixture_augmentation", False)
     kwargs["center_pixel"] = center_pixel
     return model, optimizer, criterion, kwargs
+
 
 
 class Baseline(nn.Module):
@@ -1228,3 +1242,25 @@ def val(net, data_loader, device="cpu", supervision="full"):
                     accuracy += out.item() == pred.item()
                     total += 1
     return accuracy / total
+
+class ThreeDimSegFormer(nn.Module):
+    def __init__(self, img_size=(200,224,224), patch_size=4, in_chans=1, num_classes=1000, embed_dims=[64, 128, 256, 512],
+                 num_heads=[1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=0.,
+                 attn_drop_rate=0., drop_path_rate=0.1, norm_layer=nn.LayerNorm,
+                 depths=[3, 4, 6, 3], sr_ratios=[8, 4, 2, 1]):
+        super().__init__()
+        self.encoder = MixVisionTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes, embed_dims=embed_dims,
+                 num_heads=num_heads, mlp_ratios=mlp_ratios, qkv_bias=qkv_bias, qk_scale=qk_scale, drop_rate=drop_rate,
+                 attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate, norm_layer=norm_layer,
+                 depths=depths, sr_ratios=sr_ratios)
+        self.decoder = SegFormerHead(feature_strides=[4, 8, 16, 32], in_channels=embed_dims ,embedding_dim = embed_dims[-1], num_classes=num_classes)
+
+    def final_resize(self, input, size=None, scale_factor=None, mode='nearest', align_corners=None):
+        return F.interpolate(input, size, scale_factor, mode, align_corners)
+
+    def forward(self, input):
+        x = self.encoder(input)
+        x = self.decoder(x)
+        x = self.final_resize(x, size=input.shape[2:],mode='trilinear',align_corners=False)
+
+        return x
