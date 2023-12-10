@@ -16,6 +16,8 @@ import joblib
 from tqdm import tqdm
 from utils import grouper, sliding_window, count_sliding_window, camel_to_snake
 from three_dim_segform_arch import *
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 def get_model(name, **kwargs):
@@ -1021,6 +1023,7 @@ def train(
     display=None,
     val_loader=None,
     supervision="full",
+    distributed = False
 ):
     """
     Training loop to optimize a network for several epochs and a specified loss
@@ -1043,6 +1046,11 @@ def train(
         raise Exception("Missing criterion. You must specify a loss function.")
 
     net.to(device)
+    if distributed and device == "cuda":
+        rank = dist.get_rank()
+        device_id = rank % torch.cuda.device_count()
+        net = DDP(net, device_ids=[device_id])
+
 
     save_epoch = epoch // 20 if epoch > 20 else 1
 

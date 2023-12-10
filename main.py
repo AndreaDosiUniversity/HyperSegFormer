@@ -29,6 +29,9 @@ from skimage import io
 import seaborn as sns
 #import visdom
 
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
+
 import os
 from utils import (
     metrics,
@@ -85,14 +88,15 @@ parser.add_argument(
     type=str,
     help="Folder where to store the "
     "datasets (defaults to the current working directory).",
-    default="./Datasets/",
+    default="/ibiscostorage/adosi/hypersegformer",
 )
-parser.add_argument(
-    "--cuda",
-    type=int,
-    default=-1,
-    help="Specify CUDA device (defaults to -1, which learns on CPU)",
-)
+if torch.cuda.is_available() == False:
+    parser.add_argument(
+        "--cuda",
+        type=int,
+        default=-1,
+        help="Specify CUDA device (defaults to -1, which learns on CPU)",
+    )
 parser.add_argument("--runs", type=int, default=1, help="Number of runs (default: 1)")
 parser.add_argument(
     "--restore",
@@ -161,6 +165,12 @@ group_train.add_argument(
     default=1,
     help="Sliding window step stride during inference (default = 1)",
 )
+group_train.add_argument(
+    "--distribuited",
+    type=bool,
+    default=False,
+    help="Distribuited training on multiple Gpu (default = False)",
+)
 # Data augmentation parameters
 group_da = parser.add_argument_group("Data augmentation")
 group_da.add_argument(
@@ -187,10 +197,12 @@ parser.add_argument(
     help="Download the specified datasets and quits.",
 )
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 args = parser.parse_args()
+print(args)
 
-CUDA_DEVICE = get_device(args.cuda)
+CUDA_DEVICE = device
 
 # % of training samples
 SAMPLE_PERCENTAGE = args.training_sample
@@ -225,18 +237,24 @@ TRAIN_GT = args.train_set
 # Testing ground truth file
 TEST_GT = args.test_set
 TEST_STRIDE = args.test_stride
+DISTRIBUITED = args.distribuited
 
 if args.download is not None and len(args.download) > 0:
     for dataset in args.download:
         get_dataset(dataset, target_folder=FOLDER)
     quit()
+if DISTRIBUITED:
+    dist.init_process_group(backend='nccl')
+    rank = dist.get_rank()
+    print(f"Start running basic DDP net on rank {rank}.")    
+
 
 # viz = visdom.Visdom(env=DATASET + " " + MODEL)
 # if not viz.check_connection:
 #     print("Visdom is not connected. Did you run 'python -m visdom.server' ?")
 
-
 hyperparams = vars(args)
+print(hyperparams)
 # Load the dataset
 img, gt, LABEL_VALUES, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(DATASET, FOLDER)
 # Number of classes
@@ -376,6 +394,10 @@ for run in range(N_RUNS):
         train_gt, val_gt = sample_gt(train_gt, 0.95, mode="random")
         # Generate the dataset
         train_dataset = HyperX(img, train_gt, **hyperparams)
+        if DISTRIBUITED:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+            train_loader = data.DataLoader(dataset=train_dataset, batch_size=hyperparams["batch_size"], sampler=train_sampler)
+
         train_loader = data.DataLoader(
             train_dataset,
             batch_size=hyperparams["batch_size"],
@@ -388,6 +410,7 @@ for run in range(N_RUNS):
             # pin_memory=hyperparams['device'],
             batch_size=hyperparams["batch_size"],
         )
+
 
         print(hyperparams)
         print("Network :")
@@ -413,6 +436,7 @@ for run in range(N_RUNS):
                 supervision=hyperparams["supervision"],
                 val_loader=val_loader,
                 display=None,
+                distributed = hyperparams["distribuited"]
             )
         except KeyboardInterrupt:
             # Allow the user to stop the training
